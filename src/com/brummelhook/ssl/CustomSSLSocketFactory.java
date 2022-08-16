@@ -27,14 +27,27 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 
 	private static volatile CustomSSLSocketFactory singletonCustLdapSslSockFact;
 
-
+	// https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#KeyStore
+	private static String DEFAULT_TRUSTSTORE_TYPE = "JKS";
+	
+	// https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#SSLContext
+	private static String DEFAULT_SSLCTX_PROTOCOL = "TLSv1.2";
 
 	private CustomSSLSocketFactory() throws KeyManagementException, KeyStoreException, FileNotFoundException, NoSuchAlgorithmException, CertificateException, IOException
 	{
-		sslSocketFactory = loadTrustStoreProgrammatically();
+		String trustStore = System.getProperty("com.brummelhook.ssl.trustStore");
+		String trustStoreType = System.getProperty("com.brummelhook.ssl.trustStoreType");
+		String trustStorePassword = System.getProperty("com.brummelhook.ssl.trustStorePassword");
+		String sslContextProtocol = System.getProperty("com.brummelhook.ssl.sslContextProtocol");
+
+		sslSocketFactory = loadTrustStoreProgrammatically(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
 	}
 
-	@SuppressWarnings("unused")
+	private CustomSSLSocketFactory(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol) throws KeyManagementException, KeyStoreException, FileNotFoundException, NoSuchAlgorithmException, CertificateException, IOException
+	{
+		sslSocketFactory = loadTrustStoreProgrammatically(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
+	}
+
 	private static CustomSSLSocketFactory getSingletonInstance() throws KeyManagementException, KeyStoreException, FileNotFoundException, NoSuchAlgorithmException, CertificateException, IOException
 	{
 		if (CustomSSLSocketFactory.singletonCustLdapSslSockFact == null)
@@ -51,10 +64,10 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 		return CustomSSLSocketFactory.singletonCustLdapSslSockFact;
 	}
 
-	
-	public static SocketFactory getDefault() 
+	public static SocketFactory getDefault()
 	{
-		/* This method is called by LDAP implementations to create the custom 
+		/*
+		 * This method is called by LDAP implementations to create the custom
 		 * SSL socket factory.
 		 * 
 		 * There are times when you need to have more control over the SSL
@@ -71,32 +84,51 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 
 		try
 		{
-			// This returns a new instance each time:
-			customSSLSocketFactory = new CustomSSLSocketFactory(); 
-			
-			// This returns the same instance each time (singleton pattern)
-			// customSSLSocketFactory = CustomSSLSocketFactory.getSingletonInstance(); 
+			customSSLSocketFactory = CustomSSLSocketFactory.getSingletonInstance();
 		} catch (Exception e)
 		{
 			StringWriter sw = new StringWriter();
-		    e.printStackTrace(new PrintWriter(sw));
-		    throw new RuntimeException("Failed to create CustomSSLSocketFactory. Exception: " + e.getClass().getSimpleName() + ". \nReason: " + sw.toString(), e);
+			e.printStackTrace(new PrintWriter(sw));
+			throw new RuntimeException("Failed to create CustomSSLSocketFactory. Exception: " + e.getClass().getSimpleName() + ". \nReason: " + sw.toString(), e);
 		}
 
 		return customSSLSocketFactory;
 	}
 
-	private SSLSocketFactory loadTrustStoreProgrammatically() throws KeyStoreException, FileNotFoundException, IOException, NoSuchAlgorithmException, KeyManagementException, CertificateException
+	public static SocketFactory getInstance(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol)
 	{
-		String prefix = System.getProperty("com.brummelhook.ssl.properties.prefix");
-		if (null == prefix) {
-			prefix = "javax.net.ssl";
+		CustomSSLSocketFactory customSSLSocketFactory = null;
+		
+		try
+		{
+			customSSLSocketFactory = new CustomSSLSocketFactory(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
+		} catch (Exception e)
+		{
+			StringWriter sw = new StringWriter();
+			e.printStackTrace(new PrintWriter(sw));
+			throw new RuntimeException("Failed to create CustomSSLSocketFactory. Exception: " + e.getClass().getSimpleName() + ". \nReason: " + sw.toString(), e);
 		}
-		String trustStore = System.getProperty(prefix + ".trustStore");
-		String trustStoreType = System.getProperty(prefix + ".trustStoreType");
-	    String trustStorePassword = System.getProperty(prefix + ".trustStorePassword");
-	        
-	    KeyStore keyStore = KeyStore.getInstance(trustStoreType);
+
+		return customSSLSocketFactory;
+	}
+
+	public static SocketFactory getInstance(String trustStore, String trustStorePassword, String trustStoreType)
+	{
+		return getInstance(trustStore, trustStorePassword, trustStoreType, null);
+	}
+
+	public static SocketFactory getInstance(String trustStore, String trustStorePassword)
+	{
+		return getInstance(trustStore, trustStorePassword, null, null);
+	}
+
+	private SSLSocketFactory loadTrustStoreProgrammatically(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol) throws KeyStoreException, FileNotFoundException, IOException, NoSuchAlgorithmException, KeyManagementException, CertificateException
+	{
+
+		if (null == trustStoreType)
+			trustStoreType = DEFAULT_TRUSTSTORE_TYPE;
+		
+		KeyStore keyStore = KeyStore.getInstance(trustStoreType);
 
 		try (BufferedInputStream bisTrustStore = new BufferedInputStream(new FileInputStream(trustStore)))
 		{
@@ -111,8 +143,10 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 		TrustManager[] trustManagers = trustFactory.getTrustManagers();
 
 		// initialize an SSL context to use these managers
-		//String sslContextProtocol = SSLContext.getDefault().getProtocol();
-		SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+		if (null == sslContextProtocol)
+			sslContextProtocol = DEFAULT_SSLCTX_PROTOCOL;
+
+		SSLContext sslContext = SSLContext.getInstance(sslContextProtocol);
 		sslContext.init(null, trustManagers, null);
 
 		SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
