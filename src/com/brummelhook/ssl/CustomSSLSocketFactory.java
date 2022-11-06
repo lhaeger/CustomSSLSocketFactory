@@ -29,7 +29,7 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 
 	// https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#KeyStore
 	private static String DEFAULT_TRUSTSTORE_TYPE = "JKS";
-	
+
 	// https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#SSLContext
 	private static String DEFAULT_SSLCTX_PROTOCOL = "TLSv1.2";
 
@@ -40,12 +40,12 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 		String trustStorePassword = System.getProperty("com.brummelhook.ssl.trustStorePassword");
 		String sslContextProtocol = System.getProperty("com.brummelhook.ssl.sslContextProtocol");
 
-		sslSocketFactory = loadTrustStoreProgrammatically(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
+		sslSocketFactory = loadTrustStore(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
 	}
 
 	private CustomSSLSocketFactory(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol) throws KeyManagementException, KeyStoreException, FileNotFoundException, NoSuchAlgorithmException, CertificateException, IOException
 	{
-		sslSocketFactory = loadTrustStoreProgrammatically(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
+		sslSocketFactory = loadTrustStore(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
 	}
 
 	private static CustomSSLSocketFactory getSingletonInstance() throws KeyManagementException, KeyStoreException, FileNotFoundException, NoSuchAlgorithmException, CertificateException, IOException
@@ -66,20 +66,6 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 
 	public static SocketFactory getDefault()
 	{
-		/*
-		 * This method is called by LDAP implementations to create the custom
-		 * SSL socket factory.
-		 * 
-		 * There are times when you need to have more control over the SSL
-		 * sockets, or sockets in general, used by the LDAP service provider. To
-		 * set the socket factory implementation used by the LDAP service
-		 * provider, set the "java.naming.ldap.factory.socket" property to the
-		 * fully qualified class name of the socket factory. That class must
-		 * extend the javax.net.SocketFactory abstract class and provide an
-		 * implementation of the getDefault() method that returns an instance of
-		 * the custom socket factory. See:
-		 * https://docs.oracle.com/javase/jndi/tutorial/ldap/security/ssl.html
-		 */
 		CustomSSLSocketFactory customSSLSocketFactory = null;
 
 		try
@@ -98,7 +84,7 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 	public static SocketFactory getInstance(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol)
 	{
 		CustomSSLSocketFactory customSSLSocketFactory = null;
-		
+
 		try
 		{
 			customSSLSocketFactory = new CustomSSLSocketFactory(trustStore, trustStorePassword, trustStoreType, sslContextProtocol);
@@ -122,17 +108,17 @@ public class CustomSSLSocketFactory extends SSLSocketFactory
 		return getInstance(trustStore, trustStorePassword, null, null);
 	}
 
-	private SSLSocketFactory loadTrustStoreProgrammatically(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol) throws KeyStoreException, FileNotFoundException, IOException, NoSuchAlgorithmException, KeyManagementException, CertificateException
+	private SSLSocketFactory loadTrustStore(String trustStore, String trustStorePassword, String trustStoreType, String sslContextProtocol) throws KeyStoreException, FileNotFoundException, IOException, NoSuchAlgorithmException, KeyManagementException, CertificateException
 	{
 
 		if (null == trustStoreType)
 			trustStoreType = DEFAULT_TRUSTSTORE_TYPE;
-		
+
 		KeyStore keyStore = KeyStore.getInstance(trustStoreType);
 
-		try (BufferedInputStream bisTrustStore = new BufferedInputStream(new FileInputStream(trustStore)))
+		try (BufferedInputStream trustStoreStream = new BufferedInputStream(new FileInputStream(trustStore)))
 		{
-			keyStore.load(bisTrustStore, trustStorePassword != null ? trustStorePassword.toCharArray() : null);
+			keyStore.load(trustStoreStream, trustStorePassword != null ? trustStorePassword.toCharArray() : null);
 		}
 
 		// initialize a trust manager factory with the trusted store
